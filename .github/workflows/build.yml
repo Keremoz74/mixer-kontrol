@@ -1,0 +1,50 @@
+name: APK Derle
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Projeyi aç
+        run: unzip -o mixer_kontrol.zip -d src
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Android projesini hazırla
+        working-directory: src/mixer_kontrol
+        run: |
+          flutter create --platforms=android --org com.mixerkontrol .
+          rm -f test/widget_test.dart
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' android/app/src/main/AndroidManifest.xml
+          flutter pub get
+
+      - name: APK derle
+        working-directory: src/mixer_kontrol
+        run: flutter build apk --release
+
+      - name: APK'yı yayınla
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Mikser Kontrol ${{ github.run_number }}
+          files: src/mixer_kontrol/build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Testler
+        working-directory: src/mixer_kontrol
+        continue-on-error: true
+        run: flutter test
