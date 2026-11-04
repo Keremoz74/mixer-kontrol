@@ -41,15 +41,9 @@ jobs:
 
       - name: Android projesini hazırla
         working-directory: src/mixer_kontrol
+        # All Android set-up (permissions, name, icon) is in the zip.
         run: |
-          flutter create --platforms=android --org com.mixerkontrol .
-          rm -f test/widget_test.dart
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' android/app/src/main/AndroidManifest.xml
-          # App name and launcher icon come from the zip (branding/), so future
-          # renames or new icons need no change to this file.
-          cp -r branding/android/res/. android/app/src/main/res/
-          APP_NAME="$(cat branding/app_name.txt)"
-          sed -i "s#android:label=\"[^\"]*\"#android:label=\"$APP_NAME\"#" android/app/src/main/AndroidManifest.xml
+          bash ci/prepare_android.sh
           flutter pub get
 
       - name: APK derle
