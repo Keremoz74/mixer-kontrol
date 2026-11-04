@@ -12,9 +12,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Projeyi aç
-        run: unzip -o mixer_kontrol.zip -d src
+        # Use the most recently uploaded zip, whatever the phone named it
+        # (mixer_kontrol(1).zip, mixer_kontrol-2.zip, ...).
+        run: |
+          ZIP=$(git log -1 --format= --name-only --diff-filter=AM -- '*.zip' | head -1)
+          echo "Using $ZIP"
+          unzip -o "$ZIP" -d src
 
       - uses: actions/setup-java@v4
         with:
@@ -25,23 +32,35 @@ jobs:
         with:
           channel: stable
 
+      - name: Sabit imza anahtarı
+        # Same key on every build, so new APKs install as updates
+        # (no uninstall, saved snapshots are kept).
+        run: |
+          mkdir -p ~/.android
+          cp src/mixer_kontrol/ci/debug.keystore ~/.android/debug.keystore
+
       - name: Android projesini hazırla
         working-directory: src/mixer_kontrol
         run: |
           flutter create --platforms=android --org com.mixerkontrol .
           rm -f test/widget_test.dart
           sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' android/app/src/main/AndroidManifest.xml
+          # App name and launcher icon come from the zip (branding/), so future
+          # renames or new icons need no change to this file.
+          cp -r branding/android/res/. android/app/src/main/res/
+          APP_NAME="$(cat branding/app_name.txt)"
+          sed -i "s#android:label=\"[^\"]*\"#android:label=\"$APP_NAME\"#" android/app/src/main/AndroidManifest.xml
           flutter pub get
 
       - name: APK derle
         working-directory: src/mixer_kontrol
-        run: flutter build apk --release
+        run: flutter build apk --release --build-number=${{ github.run_number }}
 
       - name: APK'yı yayınla
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Mikser Kontrol ${{ github.run_number }}
+          name: OzMix Control ${{ github.run_number }}
           files: src/mixer_kontrol/build/app/outputs/flutter-apk/app-release.apk
 
       - name: Testler
