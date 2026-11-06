@@ -1,11 +1,29 @@
 name: APK Derle
 
+# DEVELOPMENT build: signed with the shared development key in the zip
+# (ci/debug.keystore), given explicitly to Gradle so every build carries the
+# same signature and installs as an update. Before publishing to a store,
+# switch to the private key in GitHub Secrets (see SECURITY.md).
+
 on:
   push:
   workflow_dispatch:
 
+# A newer upload replaces a build still running.
+concurrency:
+  group: apk-build
+  cancel-in-progress: true
+
 permissions:
-  contents: write
+  contents: write # only to publish the release with the APK
+
+env:
+  OZMIX_KEYSTORE: ${{ github.workspace }}/src/mixer_kontrol/ci/debug.keystore
+  OZMIX_KEYSTORE_PASSWORD: android
+  OZMIX_KEY_ALIAS: androiddebugkey
+  OZMIX_KEY_PASSWORD: android
+  # SHA-256 of the development certificate (CN=Mixer Control, O=Keremoz74).
+  EXPECTED_CERT_SHA256: 10096cab05f126be7103f4ed70fc8e9119d880f171364768934df107d8f249d5
 
 jobs:
   build:
@@ -16,8 +34,7 @@ jobs:
           fetch-depth: 0
 
       - name: Projeyi aç
-        # Use the most recently uploaded zip, whatever the phone named it
-        # (mixer_kontrol(1).zip, mixer_kontrol-2.zip, ...).
+        # Use the most recently uploaded zip, whatever its name.
         run: |
           ZIP=$(git log -1 --format= --name-only --diff-filter=AM -- '*.zip' | head -1)
           echo "Using $ZIP"
@@ -31,17 +48,10 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-
-      - name: Sabit imza anahtarı
-        # Same key on every build, so new APKs install as updates
-        # (no uninstall, saved snapshots are kept).
-        run: |
-          mkdir -p ~/.android
-          cp src/mixer_kontrol/ci/debug.keystore ~/.android/debug.keystore
+          flutter-version: '3.47.9' # pinned: same toolchain on every build
 
       - name: Android projesini hazırla
         working-directory: src/mixer_kontrol
-        # All Android set-up (permissions, name, icon) is in the zip.
         run: |
           bash ci/prepare_android.sh
           flutter pub get
@@ -49,6 +59,15 @@ jobs:
       - name: APK derle
         working-directory: src/mixer_kontrol
         run: flutter build apk --release --build-number=${{ github.run_number }}
+
+      - name: İmzayı doğrula
+        # Every APK must carry the same certificate, or it won't install as
+        # an update. Refuse to publish anything else.
+        working-directory: src/mixer_kontrol
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs build/app/outputs/flutter-apk/app-release.apk | tee signer.txt
+          grep -qi "SHA-256 digest: $EXPECTED_CERT_SHA256" signer.txt || { echo "::error::APK signed with an unexpected key"; exit 1; }
 
       - name: APK'yı yayınla
         uses: softprops/action-gh-release@v2
