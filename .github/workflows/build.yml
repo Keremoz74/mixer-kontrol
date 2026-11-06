@@ -79,4 +79,4 @@ jobs:
       - name: Testler
         working-directory: src/mixer_kontrol
         continue-on-error: true
-        run: flutter test
+        run: flutter test test/osc_test.dart

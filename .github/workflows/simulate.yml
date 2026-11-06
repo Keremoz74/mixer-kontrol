@@ -1,0 +1,53 @@
+name: Simulation (100 users)
+
+# Stability simulation: 100 different users one after another (fake mixer over
+# real UDP) and the same users driving the UI on their device sizes.
+# Started by hand; reports are uploaded as artifacts.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sim:
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [logic, ui]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Unpack project
+        run: |
+          ZIP=$(git log -1 --format= --name-only --diff-filter=AM -- '*.zip' | head -1)
+          echo "Using $ZIP"
+          unzip -o "$ZIP" -d src
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.9'
+
+      - name: Dependencies
+        working-directory: src/mixer_kontrol
+        run: flutter pub get
+
+      - name: Run ${{ matrix.part }} simulation
+        working-directory: src/mixer_kontrol
+        continue-on-error: true
+        run: |
+          mkdir -p build/sim
+          if [ "${{ matrix.part }}" = "logic" ]; then T=test/sim/session_sim_test.dart; else T=test/sim/ui_monkey_test.dart; fi
+          flutter test "$T" --reporter expanded 2>&1 | tee build/sim/${{ matrix.part }}_log.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sim-${{ matrix.part }}
+          path: src/mixer_kontrol/build/sim/
