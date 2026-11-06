@@ -2,10 +2,13 @@ name: Simulation (100 users)
 
 # Stability simulation: 100 different users one after another (fake mixer over
 # real UDP) and the same users driving the UI on their device sizes.
-# Started by hand; reports are uploaded as artifacts.
+# Runs when sim-trigger.txt changes (or by hand); reports are uploaded as artifacts.
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - 'sim-trigger.txt'
 
 permissions:
   contents: read
