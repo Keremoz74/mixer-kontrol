@@ -1,0 +1,35 @@
+name: Probe (diagnostics)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'probe-trigger.txt'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Unpack project
+        run: |
+          ZIP=$(git log -1 --format= --name-only --diff-filter=AM -- '*.zip' | head -1)
+          [ -z "$ZIP" ] && ZIP=mixer_kontrol.zip
+          unzip -o "$ZIP" -d src
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.9'
+      - name: Dependencies
+        working-directory: src/mixer_kontrol
+        run: flutter pub get
+      - name: Probe
+        working-directory: src/mixer_kontrol
+        continue-on-error: true
+        run: flutter test test/sim/probe_test.dart --reporter expanded
