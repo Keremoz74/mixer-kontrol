@@ -32,4 +32,4 @@ jobs:
       - name: Probe
         working-directory: src/mixer_kontrol
         continue-on-error: true
-        run: flutter test test/sim/probe_test.dart --reporter expanded
+        run: flutter test test/preview_test.dart --reporter expanded
