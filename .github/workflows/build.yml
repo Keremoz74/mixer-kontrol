@@ -1,9 +1,11 @@
 name: APK Derle
 
-# DEVELOPMENT build: signed with the shared development key in the zip
-# (ci/debug.keystore), given explicitly to Gradle so every build carries the
-# same signature and installs as an update. Before publishing to a store,
-# switch to the private key in GitHub Secrets (see SECURITY.md).
+# RELEASE build: signed only with the private upload key kept in GitHub
+# Secrets (never in the repository). If the secrets are missing, or the APK
+# carries any other certificate, the build fails and nothing is published.
+# Secrets (Settings → Secrets and variables → Actions):
+#   ANDROID_KEYSTORE_BASE64   the upload keystore (PKCS12), base64 encoded
+#   ANDROID_KEYSTORE_PASSWORD its password (key alias: ozmix)
 
 on:
   push:
@@ -18,20 +20,19 @@ permissions:
   contents: write # only to publish the release with the APK
 
 env:
-  OZMIX_KEYSTORE: ${{ github.workspace }}/src/mixer_kontrol/ci/debug.keystore
-  OZMIX_KEYSTORE_PASSWORD: android
-  OZMIX_KEY_ALIAS: androiddebugkey
-  OZMIX_KEY_PASSWORD: android
-  # SHA-256 of the development certificate (CN=Mixer Control, O=Keremoz74).
-  EXPECTED_CERT_SHA256: 10096cab05f126be7103f4ed70fc8e9119d880f171364768934df107d8f249d5
+  OZMIX_KEY_ALIAS: ozmix
+  # SHA-256 of the upload certificate (CN=OzMix Control, O=Keremoz74, C=TR).
+  EXPECTED_CERT_SHA256: a71c91452e446542c3056ee02e532f0c28f61fafd4363a2bf750f744a8d0f7ee
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Third-party actions are pinned to exact commits (supply-chain safety).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Projeyi aç
         # Use the most recently uploaded zip, whatever its name.
@@ -40,12 +41,31 @@ jobs:
           echo "Using $ZIP"
           unzip -o "$ZIP" -d src
 
-      - uses: actions/setup-java@v4
+      - name: İmza anahtarını hazırla
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PW" ]; then
+            echo "::error::Signing secrets ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD are not set (see SECURITY.md)"
+            exit 1
+          fi
+          KS="$RUNNER_TEMP/upload.p12"
+          echo "$KEYSTORE_B64" | base64 -d > "$KS"
+          chmod 600 "$KS"
+          echo "::add-mask::$KEYSTORE_PW"
+          {
+            echo "OZMIX_KEYSTORE=$KS"
+            echo "OZMIX_KEYSTORE_PASSWORD=$KEYSTORE_PW"
+            echo "OZMIX_KEY_PASSWORD=$KEYSTORE_PW"
+          } >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
           flutter-version: '3.47.9' # pinned: same toolchain on every build
@@ -58,10 +78,11 @@ jobs:
 
       - name: APK derle
         working-directory: src/mixer_kontrol
-        run: flutter build apk --release --build-number=${{ github.run_number }}
+        # Obfuscated Dart; the symbols to read crash traces stay in the build.
+        run: flutter build apk --release --obfuscate --split-debug-info=build/symbols --build-number=${{ github.run_number }}
 
       - name: İmzayı doğrula
-        # Every APK must carry the same certificate, or it won't install as
+        # Every APK must carry the upload certificate, or it won't install as
         # an update. Refuse to publish anything else.
         working-directory: src/mixer_kontrol
         run: |
@@ -69,8 +90,12 @@ jobs:
           "$APKSIGNER" verify --print-certs build/app/outputs/flutter-apk/app-release.apk | tee signer.txt
           grep -qi "SHA-256 digest: $EXPECTED_CERT_SHA256" signer.txt || { echo "::error::APK signed with an unexpected key"; exit 1; }
 
+      - name: Anahtarı sil
+        if: always()
+        run: rm -f "$RUNNER_TEMP/upload.p12"
+
       - name: APK'yı yayınla
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: build-${{ github.run_number }}
           name: OzMix Control ${{ github.run_number }}

@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
       - name: Unpack project
@@ -22,7 +22,7 @@ jobs:
           ZIP=$(git log -1 --format= --name-only --diff-filter=AM -- '*.zip' | head -1)
           [ -z "$ZIP" ] && ZIP=mixer_kontrol.zip
           unzip -o "$ZIP" -d src
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
           flutter-version: '3.47.9'
@@ -32,4 +32,4 @@ jobs:
       - name: Probe
         working-directory: src/mixer_kontrol
         continue-on-error: true
-        run: flutter test test/preview_test.dart --reporter expanded
+        run: flutter test test/osc_test.dart test/yamaha_test.dart test/ah_test.dart test/wing_test.dart test/tascam_test.dart test/presonus_test.dart test/preview_test.dart
