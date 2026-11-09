@@ -64,11 +64,18 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          # Keep Gradle (and its downloads) between builds, so a slow or
+          # failing download server doesn't stop the build.
+          cache: gradle
+          # (keyed on the Android setup script only: a version bump must not
+          # throw the cache away)
+          cache-dependency-path: src/mixer_kontrol/ci/prepare_android.sh
 
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
           flutter-version: '3.47.9' # pinned: same toolchain on every build
+          cache: true # keep the Flutter SDK between builds
 
       - name: Android projesini hazırla
         working-directory: src/mixer_kontrol
